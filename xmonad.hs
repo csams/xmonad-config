@@ -266,7 +266,7 @@ myStartupHook = do
   <+> spawnOnce "blueman-applet"
   <+> spawnOnce "nm-applet"
 
-  <+> spawnOnce "google-chrome-stable --new-window"
+  <+> spawnOnOnce "1:www" "google-chrome-stable --new-window"
   <+> spawnOnOnce "2:term" myTerminal
   <+> spawnOnOnce "8:chat" "slack"
   <+> spawnOnOnce "8:chat" "Discord"
@@ -278,7 +278,7 @@ main :: IO ()
 main = do
   xmproc <- spawnPipe "xmobar -x 0"
   xmonad $
-    ewmhFullscreen $
+    ewmhFullscreen . ewmh $
     docks
       defaults
         { logHook =
