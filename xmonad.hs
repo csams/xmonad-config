@@ -2,22 +2,49 @@
 {-# LANGUAGE KindSignatures #-}
 
 import Control.Monad
-import qualified Data.List as L
-import qualified Data.Map as M
+import Data.List qualified as L
+import Data.Map qualified as M
 import Data.Monoid
 import System.Exit
 import System.IO
 import XMonad
-
+import XMonad.Actions.Search qualified as S
 import XMonad.Actions.SpawnOn
+import XMonad.Actions.Submap qualified as SM
 import XMonad.Actions.WindowBringer
 import XMonad.Hooks.DynamicLog
 import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ManageDocks
+import XMonad.Layout.Accordion
+import XMonad.Layout.CenteredIfSingle
 import XMonad.Layout.Spacing
-import qualified XMonad.StackSet as W
+import XMonad.Layout.ThreeColumns
+import XMonad.Prelude (isPrefixOf)
+import XMonad.Prompt (XPConfig, XPrompt, historyCompletionP, mkXPrompt)
+import XMonad.Prompt qualified as P
+import XMonad.StackSet qualified as W
 import XMonad.Util.Run (spawnPipe)
 import XMonad.Util.SpawnOnce
+
+{-
+    KeyPress event, serial 33, synthetic NO, window 0x1800001,
+        state 0x0, keycode 123 (keysym 0x1008ff13, XF86AudioRaiseVolume), same_screen YES,
+
+    KeyPress event, serial 33, synthetic NO, window 0x1800001,
+        state 0x0, keycode 122 (keysym 0x1008ff11, XF86AudioLowerVolume), same_screen YES,
+
+    KeyPress event, serial 33, synthetic NO, window 0x1800001,
+        state 0x0, keycode 121 (keysym 0x1008ff12, XF86AudioMute), same_screen YES,
+-}
+
+raiseVolume :: KeySym
+raiseVolume = 0x1008ff13
+
+lowerVolume :: KeySym
+lowerVolume = 0x1008ff11
+
+mute :: KeySym
+mute = 0x1008ff12
 
 -- The preferred terminal program, which is used in a binding below and by
 -- certain contrib modules.
@@ -67,19 +94,64 @@ myFocusedBorderColor = "#ff00ff"
 
 ------------------------------------------------------------------------
 -- Key bindings. Add, modify or remove key bindings here.
+--
+
+newtype AppPrompt = AppPrompt String
+
+instance XPrompt AppPrompt where
+  showXPrompt (AppPrompt n) = n ++ " "
+
+type Application = String
+
+type Parameters = String
+
+launch' :: MonadIO m => Application -> Parameters -> m ()
+launch' app params = spawn (app ++ " " ++ params)
+
+launchApp :: XPConfig -> Application -> X ()
+launchApp config app = do
+  hc <- historyCompletionP (app `isPrefixOf`)
+  mkXPrompt (AppPrompt app) config hc $ launch' app
+
+forecast = S.searchEngine "forecast" "https://forecast.weather.gov/zipcity.php?inputstring="
+
+images = S.searchEngine "images" "https://www.google.com/images?q="
+
+searchEngineMap method =
+  M.fromList
+    [ ((noModMask, xK_d), method S.dictionary),
+      ((noModMask, xK_g), method S.github),
+      ((noModMask, xK_f), method forecast),
+      ((noModMask, xK_h), method S.hackage),
+      ((noModMask, xK_i), method images),
+      ((noModMask, xK_m), method S.maps),
+      ((noModMask, xK_w), method S.wikipedia),
+      ((noModMask, xK_y), method S.youtube)
+    ]
+
+promptConfig =
+  P.def
+    { P.position = P.Top,
+      P.promptBorderWidth = 0,
+      P.font = "xft:monospace-14",
+      P.bgColor = "#2f1e2e",
+      P.fgColor = "#b4b4b4",
+      P.height = 24,
+      P.showCompletionOnTab = True
+    }
+
 myKeys :: XConfig Layout -> M.Map (KeyMask, KeySym) (X ())
 myKeys conf@XConfig {XMonad.modMask = modm} =
   M.fromList $
     -- launch a terminal
     [ ((modm .|. shiftMask, xK_Return), spawn $ XMonad.terminal conf),
       -- launch dmenu
-      ((modm, xK_p), spawn "dmenu_run"),
-      -- launch gmrun
-      ((modm .|. shiftMask, xK_p), spawn "gmrun"),
+      -- ((modm, xK_p), spawn "dmenu_run -fn 'xft:monospace-14' -nb '#000000' -nf '#ca8f2d'"),
+      ((modm, xK_p), spawn "rofi -show combi -modes combi -combi-modes 'window,drun,run'"),
       -- close focused window
       ((modm .|. shiftMask, xK_c), kill),
       -- lock the screen
-      ((modm , xK_x), spawn myLock),
+      ((modm, xK_x), spawn myLock),
       -- Rotate through the available layout algorithms
       ((modm, xK_space), sendMessage NextLayout),
       --  Reset the layouts on the current workspace to default
@@ -101,9 +173,9 @@ myKeys conf@XConfig {XMonad.modMask = modm} =
       -- Swap the focused window with the previous window
       ((modm .|. shiftMask, xK_k), windows W.swapUp),
       -- Go to a Window by its name
-      ((modm, xK_g), gotoMenu),
+      ((modm, xK_g), gotoMenuConfig def {menuCommand = "rofi", menuArgs = ["-dmenu", "-i", "-p", "Go to"]}),
       -- Bring a Window by its name
-      ((modm, xK_b), bringMenu),
+      ((modm, xK_b), bringMenuConfig def {menuCommand = "rofi", menuArgs = ["-dmenu", "-i", "-p", "Bring"]}),
       -- Shrink the master area
       ((modm, xK_h), sendMessage Shrink),
       -- Expand the master area
@@ -120,6 +192,17 @@ myKeys conf@XConfig {XMonad.modMask = modm} =
       --
       -- , ((modm              , xK_b     ), sendMessage ToggleStruts)
 
+      ((mod1Mask, xK_grave), spawn "dunstctl history-pop"),
+      ((mod1Mask, xK_space), spawn "dunstctl close"),
+      ((mod1Mask, xK_Return), spawn "dunstctl context"),
+      -- volume control buttons
+      ((noModMask, mute), spawn "toggle-mute"),
+      ((noModMask, raiseVolume), spawn "volume-up"),
+      ((noModMask, lowerVolume), spawn "volume-down"),
+      -- search
+      ((modm, xK_d), S.promptSearchBrowser promptConfig "google-chrome" S.duckduckgo),
+      ((modm, xK_o), launchApp promptConfig "google-chrome"),
+      ((modm, xK_slash), SM.submap $ searchEngineMap $ S.promptSearchBrowser promptConfig "google-chrome"),
       -- Quit xmonad
       ((modm .|. shiftMask, xK_q), io exitSuccess),
       -- Restart xmonad
@@ -155,7 +238,8 @@ myMouseBindings XConfig {XMonad.modMask = modm} =
     -- mod-button1, Set the window to floating mode and move by dragging
     [ ( (modm, button1),
         \w ->
-          focus w >> mouseMoveWindow w
+          focus w
+            >> mouseMoveWindow w
             >> windows W.shiftMaster
       ),
       -- mod-button2, Raise the window to the top of the stack
@@ -163,7 +247,8 @@ myMouseBindings XConfig {XMonad.modMask = modm} =
       -- mod-button3, Set the window to floating mode and resize by dragging
       ( (modm, button3),
         \w ->
-          focus w >> mouseResizeWindow w
+          focus w
+            >> mouseResizeWindow w
             >> windows W.shiftMaster
       )
       -- you may also bind events to the mouse scroll wheel (button4 and button5)
@@ -180,19 +265,19 @@ myMouseBindings XConfig {XMonad.modMask = modm} =
 -- The available layouts.  Note that each layout is separated by |||,
 -- which denotes layout choice.
 --
-myLayout = avoidStruts $ spacingRaw True (Border 0 5 5 5) True (Border 5 5 5 5) True $ tiled ||| Mirror tiled ||| Full
-  where
-    -- default tiling algorithm partitions the screen into two panes
-    tiled = Tall nmaster delta ratio
+myLayout = avoidStruts $ spacingRaw True (Border 0 5 5 5) True (Border 5 5 5 5) True $ Full ||| centeredIfSingle 0.7 1.0 (Accordion ||| ThreeColMid 1 (3 / 100) (1 / 2))
 
-    -- The default number of windows in the master pane
-    nmaster = 1
-
-    -- Default proportion of screen occupied by master pane
-    ratio = 1 / 2
-
-    -- Percent of screen to increment by when resizing panes
-    delta = 3 / 100
+-- default tiling algorithm partitions the screen into two panes
+--  tiled = Tall nmaster delta ratio
+-- --
+-- -- -- The default number of windows in the master pane
+--  nmaster = 1
+-- --
+-- -- -- Default proportion of screen occupied by master pane
+--  ratio = 1 / 2
+-- --
+-- -- -- Percent of screen to increment by when resizing panes
+--  delta = 3 / 100
 
 ------------------------------------------------------------------------
 -- Window rules:
@@ -215,17 +300,18 @@ myLayout = avoidStruts $ spacingRaw True (Border 0 5 5 5) True (Border 5 5 5 5) 
 myManageHook :: Query (Endo WindowSet)
 myManageHook =
   composeAll
-    [ className =? "MPlayer" --> doFloat
-    , className =? "Gimp" --> doFloat
-    , resource  =? "stalonetray" --> doIgnore
-    , resource  =? "desktop_window" --> doIgnore
-    , resource  =? "kdesktop" --> doIgnore
-    , stringProperty "_NET_WM_NAME" =~ "Visual Studio Code" --> viewShift "3:dev"
-    , className =? "discord" --> doShift "8:chat"
-    , className =? "Slack" --> doShift "8:chat"
-    , manageDocks
+    [ className =? "MPlayer" --> doFloat,
+      className =? "Gimp" --> doFloat,
+      resource =? "stalonetray" --> doIgnore,
+      resource =? "desktop_window" --> doIgnore,
+      resource =? "kdesktop" --> doIgnore,
+      stringProperty "_NET_WM_NAME" =~ "Visual Studio Code" --> viewShift "3:dev",
+      className =? "discord" --> doShift "8:chat",
+      className =? "Slack" --> doShift "8:chat",
+      manageDocks
     ]
-  where viewShift = doF . liftM2 (.) W.greedyView W.shift
+  where
+    viewShift = doF . liftM2 (.) W.greedyView W.shift
 
 ------------------------------------------------------------------------
 -- Event handling
@@ -256,20 +342,21 @@ myLogHook = return ()
 -- with mod-q.  Used by, e.g., XMonad.Layout.PerWorkspace to initialize
 -- per-workspace layout choices.
 myStartupHook :: X ()
-myStartupHook = do
-  spawnOnce "nitrogen --restore"
-  <+> spawnOnce "redshift"
---  <+> spawnOnce "picom -b"
-  <+> spawnOnce "stalonetray"
-  <+> spawnOnce "xscreensaver -nosplash"
-  <+> spawnOnce "dunst"
-  <+> spawnOnce "blueman-applet"
-  <+> spawnOnce "nm-applet"
-
-  <+> spawnOnOnce "1:www" "google-chrome-stable --new-window"
-  <+> spawnOnOnce "2:term" myTerminal
-  <+> spawnOnOnce "8:chat" "slack"
-  <+> spawnOnOnce "8:chat" "Discord"
+myStartupHook =
+  do
+    spawnOnce "nitrogen --restore"
+    <+> spawnOnce "redshift"
+    <+> spawnOnce "picom -b"
+    <+> spawnOnce "stalonetray"
+    <+> spawnOnce "xscreensaver -nosplash"
+    <+> spawnOnce "screensaver-poller.py"
+    <+> spawnOnce "dunst"
+    <+> spawnOnce "blueman-applet"
+    <+> spawnOnce "nm-applet"
+    <+> spawnOnOnce "1:www" "google-chrome-stable --new-window"
+    <+> spawnOnOnce "2:term" myTerminal
+    <+> spawnOnOnce "8:chat" "slack"
+    <+> spawnOnOnce "8:chat" "Discord"
 
 ------------------------------------------------------------------------
 -- Now run xmonad with all the defaults we set up.
@@ -278,8 +365,7 @@ main :: IO ()
 main = do
   xmproc <- spawnPipe "xmobar -x 0"
   xmonad $
-    ewmhFullscreen . ewmh $
-    docks
+    ewmhFullscreen . ewmh . docks $
       defaults
         { logHook =
             dynamicLogWithPP
