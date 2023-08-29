@@ -46,6 +46,9 @@ lowerVolume = 0x1008ff11
 mute :: KeySym
 mute = 0x1008ff12
 
+printScreen :: KeySym
+printScreen = xK_Print
+
 -- The preferred terminal program, which is used in a binding below and by
 -- certain contrib modules.
 --
@@ -125,8 +128,7 @@ searchEngineMap method =
       ((noModMask, xK_h), method S.hackage),
       ((noModMask, xK_i), method images),
       ((noModMask, xK_m), method S.maps),
-      ((noModMask, xK_w), method S.wikipedia),
-      ((noModMask, xK_y), method S.youtube)
+      ((noModMask, xK_w), method S.wikipedia)
     ]
 
 promptConfig =
@@ -201,8 +203,11 @@ myKeys conf@XConfig {XMonad.modMask = modm} =
       ((noModMask, lowerVolume), spawn "volume-down"),
       -- search
       ((modm, xK_d), S.promptSearchBrowser promptConfig "google-chrome" S.duckduckgo),
+      ((modm, xK_y), S.promptSearchBrowser promptConfig "google-chrome" S.youtube),
       ((modm, xK_o), launchApp promptConfig "google-chrome"),
       ((modm, xK_slash), SM.submap $ searchEngineMap $ S.promptSearchBrowser promptConfig "google-chrome"),
+      -- print the screen
+      ((noModMask, printScreen), spawn "flameshot launcher"),
       -- Quit xmonad
       ((modm .|. shiftMask, xK_q), io exitSuccess),
       -- Restart xmonad
@@ -346,13 +351,14 @@ myStartupHook =
   do
     spawnOnce "nitrogen --restore"
     <+> spawnOnce "redshift"
-    <+> spawnOnce "picom -b"
+    <+> spawnOnce "picom"
     <+> spawnOnce "stalonetray"
     <+> spawnOnce "xscreensaver -nosplash"
     <+> spawnOnce "screensaver-poller.py"
     <+> spawnOnce "dunst"
     <+> spawnOnce "blueman-applet"
     <+> spawnOnce "nm-applet"
+    <+> spawnOnce "flameshot"
     <+> spawnOnOnce "1:www" "google-chrome-stable --new-window"
     <+> spawnOnOnce "2:term" myTerminal
     <+> spawnOnOnce "8:chat" "slack"
