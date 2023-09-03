@@ -1,5 +1,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 import Control.Monad
 import Data.List qualified as L
@@ -17,6 +19,7 @@ import XMonad.Hooks.EwmhDesktops
 import XMonad.Hooks.ManageDocks
 import XMonad.Layout.Accordion
 import XMonad.Layout.CenteredIfSingle
+import XMonad.Layout.LayoutModifier
 import XMonad.Layout.Spacing
 import XMonad.Layout.ThreeColumns
 import XMonad.Prelude (isPrefixOf)
@@ -146,6 +149,12 @@ myKeys :: XConfig Layout -> M.Map (KeyMask, KeySym) (X ())
 myKeys conf@XConfig {XMonad.modMask = modm} =
   M.fromList $
     -- launch a terminal
+
+    -- launch a terminal
+
+    -- launch a terminal
+
+    -- launch a terminal
     [ ((modm .|. shiftMask, xK_Return), spawn $ XMonad.terminal conf),
       -- launch dmenu
       -- ((modm, xK_p), spawn "dmenu_run -fn 'xft:monospace-14' -nb '#000000' -nf '#ca8f2d'"),
@@ -220,6 +229,21 @@ myKeys conf@XConfig {XMonad.modMask = modm} =
       -- mod-[1..9], Switch to workspace N
       -- mod-shift-[1..9], Move client to workspace N
       --
+
+      --
+      -- mod-[1..9], Switch to workspace N
+      -- mod-shift-[1..9], Move client to workspace N
+      --
+
+      --
+      -- mod-[1..9], Switch to workspace N
+      -- mod-shift-[1..9], Move client to workspace N
+      --
+
+      --
+      -- mod-[1..9], Switch to workspace N
+      -- mod-shift-[1..9], Move client to workspace N
+      --
       [ ((m .|. modm, k), windows $ f i)
         | (i, k) <- zip (XMonad.workspaces conf) [xK_1 .. xK_9],
           (f, m) <- [(W.greedyView, 0), (W.shift, shiftMask)]
@@ -270,7 +294,35 @@ myMouseBindings XConfig {XMonad.modMask = modm} =
 -- The available layouts.  Note that each layout is separated by |||,
 -- which denotes layout choice.
 --
-myLayout = avoidStruts $ spacingRaw True (Border 0 5 5 5) True (Border 5 5 5 5) True $ Full ||| centeredIfSingle 0.7 1.0 (Accordion ||| ThreeColMid 1 (3 / 100) (1 / 2))
+
+-- This wraps the CenteredIfSingle LayoutModifier so that it is applied only if the screen is bigger than
+-- some lower bound.
+data ForceFull a = ForceFull !Dimension !Dimension deriving (Show, Read)
+
+instance LayoutModifier ForceFull Window where
+  pureModifier (ForceFull w h) r _ [(onlyWindow, d)] = ([(onlyWindow, force w h r d)], Nothing)
+  pureModifier _ _ _ winRects = (winRects, Nothing)
+
+force w h s@(Rectangle rx ry rw rh) d = if rw <= w && rh <= h then s else d
+
+forceFull ::
+  Dimension ->
+  Dimension ->
+  -- | The layout that will be used if more than one window is open
+  l a ->
+  ModifiedLayout ForceFull l a
+forceFull w h = ModifiedLayout (ForceFull w h)
+
+myLayout =
+  avoidStruts $
+    spacingRaw True (Border 0 5 5 5) True (Border 5 5 5 5) True $
+      Full ||| others
+  where
+    tcm = ThreeColMid 1 (3 / 100) (1 / 2)
+    centered = Accordion ||| tcm
+    cfgForceFull = forceFull 2560 1600
+    cfgCenteredIfSingle = centeredIfSingle 0.7 1.0
+    others = cfgForceFull $ cfgCenteredIfSingle centered
 
 -- default tiling algorithm partitions the screen into two panes
 --  tiled = Tall nmaster delta ratio
