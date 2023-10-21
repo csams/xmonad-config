@@ -1,8 +1,10 @@
+-- pragmas
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
+-- imports
 import Control.Monad
 import Data.List qualified as L
 import Data.Map qualified as M
@@ -22,14 +24,14 @@ import XMonad.Layout.CenteredIfSingle
 import XMonad.Layout.LayoutModifier
 import XMonad.Layout.Spacing
 import XMonad.Layout.ThreeColumns
-import XMonad.Prelude (isPrefixOf)
+import XMonad.Prelude (fi, isPrefixOf)
 import XMonad.Prompt (XPConfig, XPrompt, historyCompletionP, mkXPrompt)
 import XMonad.Prompt qualified as P
 import XMonad.StackSet qualified as W
 import XMonad.Util.Run (spawnPipe)
 import XMonad.Util.SpawnOnce
 
-{-
+{-  KeyPress Codes
     KeyPress event, serial 33, synthetic NO, window 0x1800001,
         state 0x0, keycode 123 (keysym 0x1008ff13, XF86AudioRaiseVolume), same_screen YES,
 
@@ -40,6 +42,7 @@ import XMonad.Util.SpawnOnce
         state 0x0, keycode 121 (keysym 0x1008ff12, XF86AudioMute), same_screen YES,
 -}
 
+-- Volume Control
 raiseVolume :: KeySym
 raiseVolume = 0x1008ff13
 
@@ -149,12 +152,6 @@ myKeys :: XConfig Layout -> M.Map (KeyMask, KeySym) (X ())
 myKeys conf@XConfig {XMonad.modMask = modm} =
   M.fromList $
     -- launch a terminal
-
-    -- launch a terminal
-
-    -- launch a terminal
-
-    -- launch a terminal
     [ ((modm .|. shiftMask, xK_Return), spawn $ XMonad.terminal conf),
       -- launch dmenu
       -- ((modm, xK_p), spawn "dmenu_run -fn 'xft:monospace-14' -nb '#000000' -nf '#ca8f2d'"),
@@ -165,6 +162,8 @@ myKeys conf@XConfig {XMonad.modMask = modm} =
       ((modm, xK_x), spawn myLock),
       -- Rotate through the available layout algorithms
       ((modm, xK_space), sendMessage NextLayout),
+      -- Jump to the Full Layout
+      ((modm, xK_f), sendMessage $ JumpToLayout "Full"),
       --  Reset the layouts on the current workspace to default
       ((modm .|. shiftMask, xK_space), setLayout $ XMonad.layoutHook conf),
       -- Resize viewed windows to the correct size
@@ -295,11 +294,10 @@ myMouseBindings XConfig {XMonad.modMask = modm} =
 -- which denotes layout choice.
 --
 
--- This wraps the CenteredIfSingle LayoutModifier so that it is applied only if the screen is bigger than
--- some lower bound.
-data ForceFull a = ForceFull !Dimension !Dimension deriving (Show, Read)
+-- ForceFullLayout wraps the CenteredIfSingle or CenteredLayout LayoutModifiers so that they are applied only if the screen is bigger than some lower bound.
+data ForceFullLayout a = ForceFull !Dimension !Dimension deriving (Show, Read)
 
-instance LayoutModifier ForceFull Window where
+instance LayoutModifier ForceFullLayout Window where
   pureModifier (ForceFull w h) r _ [(onlyWindow, d)] = ([(onlyWindow, force w h r d)], Nothing)
   pureModifier _ _ _ winRects = (winRects, Nothing)
 
@@ -310,8 +308,41 @@ forceFull ::
   Dimension ->
   -- | The layout that will be used if more than one window is open
   l a ->
-  ModifiedLayout ForceFull l a
+  ModifiedLayout ForceFullLayout l a
 forceFull w h = ModifiedLayout (ForceFull w h)
+
+-- CenteredLayout forces other Layouts to be centered
+data CenteredLayout a = CenteredLayout !Dimension !Dimension !Double !Double deriving (Show, Read)
+
+instance LayoutModifier CenteredLayout Window where
+  modifyLayout (CenteredLayout widthBound heightBound w h) wksp rect@(Rectangle rx ry rw rh) =
+    if rw <= widthBound && rh <= heightBound
+      then runLayout wksp rect
+      else runLayout wksp $ rectangleCenterPiece w h rect
+
+rectangleCenterPiece ratioX ratioY (Rectangle rx ry rw rh) = Rectangle startX startY width height
+  where
+    startX = rx + left
+    startY = ry + top
+
+    width = newSize rw left
+    height = newSize rh top
+
+    left = rw `scaleBy` ratioX
+    top = rh `scaleBy` ratioY
+
+newSize dim pos = fi $ fi dim - pos * 2
+
+scaleBy dim ratio = floor $ fi dim * (1.0 - ratio) / 2
+
+centeredLayout ::
+  Dimension ->
+  Dimension ->
+  Double ->
+  Double ->
+  l a ->
+  ModifiedLayout CenteredLayout l a
+centeredLayout widthBound heightBound w h = ModifiedLayout (CenteredLayout widthBound heightBound w h)
 
 myLayout =
   avoidStruts $
@@ -320,9 +351,14 @@ myLayout =
   where
     tcm = ThreeColMid 1 (3 / 100) (1 / 2)
     centered = Accordion ||| tcm
-    cfgForceFull = forceFull 2560 1600
-    cfgCenteredIfSingle = centeredIfSingle 0.7 1.0
-    others = cfgForceFull $ cfgCenteredIfSingle centered
+    -- others = centerMaster centered
+    -- cfgForceFull = forceFull 2560 1600
+    -- cfgCenteredIfSingle = centeredIfSingle 0.7 1.0
+    -- others = cfgForceFull $ cfgCenteredIfSingle centered
+    cfgCentered = centeredLayout 2560 1600 0.7 1.0
+    others = cfgCentered centered
+
+-- others = cfgForceFull $ cfgCentered centered
 
 -- default tiling algorithm partitions the screen into two panes
 --  tiled = Tall nmaster delta ratio
