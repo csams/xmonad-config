@@ -174,8 +174,10 @@ myKeys conf@XConfig {XMonad.modMask = modm} =
       ((modm, xK_j), windows W.focusDown),
       -- Move focus to the previous window
       ((modm, xK_k), windows W.focusUp),
+      -- Toggle centering
+      ((modm, xK_m), sendMessage ToggleCentered),
       -- Move focus to the master window
-      ((modm, xK_m), windows W.focusMaster),
+      -- ((modm, xK_m), windows W.focusMaster),
       -- Swap the focused window and the master window
       ((modm, xK_Return), windows W.swapMaster),
       -- Swap the focused window with the next window
@@ -205,27 +207,21 @@ myKeys conf@XConfig {XMonad.modMask = modm} =
       ((mod1Mask, xK_grave), spawn "dunstctl history-pop"),
       ((mod1Mask, xK_space), spawn "dunstctl close"),
       ((mod1Mask, xK_Return), spawn "dunstctl context"),
-
       -- volume control buttons
       ((noModMask, mute), spawn "toggle-mute"),
       ((noModMask, raiseVolume), spawn "volume-up"),
       ((noModMask, lowerVolume), spawn "volume-down"),
-
       -- search
       ((modm, xK_d), S.promptSearchBrowser promptConfig "firefox" S.duckduckgo),
       ((modm, xK_y), S.promptSearchBrowser promptConfig "firefox" S.youtube),
       ((modm, xK_o), launchApp promptConfig "firefox"),
       ((modm, xK_slash), SM.submap $ searchEngineMap $ S.promptSearchBrowser promptConfig "firefox"),
-
       -- print the screen
       ((noModMask, printScreen), spawn "flameshot launcher"),
-
       -- Quit xmonad
       ((modm .|. shiftMask, xK_q), io exitSuccess),
-
       -- Restart xmonad
       ((modm, xK_q), spawn "xmonad --recompile; pkill xmobar; xmonad --restart"),
-
       -- Run xmessage with a summary of the default keybindings (useful for beginners)
       ((modm .|. shiftMask, xK_slash), spawn ("echo \"" ++ help ++ "\" | xmessage -file -"))
     ]
@@ -283,31 +279,22 @@ myMouseBindings XConfig {XMonad.modMask = modm} =
 -- which denotes layout choice.
 --
 
--- ForceFullLayout wraps the CenteredIfSingle or CenteredLayout LayoutModifiers so that they are applied only if the screen is bigger than some lower bound.
-data ForceFullLayout a = ForceFull !Dimension !Dimension deriving (Show, Read)
-
-instance LayoutModifier ForceFullLayout Window where
-  pureModifier (ForceFull w h) r _ [(onlyWindow, d)] = ([(onlyWindow, force w h r d)], Nothing)
-  pureModifier _ _ _ winRects = (winRects, Nothing)
-
-force w h s@(Rectangle rx ry rw rh) d = if rw <= w && rh <= h then s else d
-
-forceFull ::
-  Dimension ->
-  Dimension ->
-  -- | The layout that will be used if more than one window is open
-  l a ->
-  ModifiedLayout ForceFullLayout l a
-forceFull w h = ModifiedLayout (ForceFull w h)
-
 -- CenteredLayout forces other Layouts to be centered
-data CenteredLayout a = CenteredLayout !Dimension !Dimension !Double !Double deriving (Show, Read)
+data ToggleCentered = ToggleCentered
+
+instance Message ToggleCentered
+
+data CenteredLayout a = CenteredLayout !Dimension !Dimension !Double !Double !Bool deriving (Show, Read)
 
 instance LayoutModifier CenteredLayout Window where
-  modifyLayout (CenteredLayout widthBound heightBound w h) wksp rect@(Rectangle rx ry rw rh) =
-    if rw <= widthBound && rh <= heightBound
+  modifyLayout (CenteredLayout widthBound heightBound w h enabled) wksp rect@(Rectangle rx ry rw rh) =
+    if not enabled || (rw <= widthBound && rh <= heightBound)
       then runLayout wksp rect
       else runLayout wksp $ rectangleCenterPiece w h rect
+
+  pureMess (CenteredLayout widthBound heightBound w h enabled) m
+    | Just ToggleCentered <- fromMessage m = Just $ CenteredLayout widthBound heightBound w h (not enabled)
+    | otherwise = Nothing
 
 rectangleCenterPiece ratioX ratioY (Rectangle rx ry rw rh) = Rectangle startX startY width height
   where
@@ -317,51 +304,23 @@ rectangleCenterPiece ratioX ratioY (Rectangle rx ry rw rh) = Rectangle startX st
     width = newSize rw left
     height = newSize rh top
 
+    newSize dim pos = fi $ fi dim - pos * 2
+    scaleBy dim ratio = floor $ fi dim * (1.0 - ratio) / 2
+
     left = rw `scaleBy` ratioX
     top = rh `scaleBy` ratioY
 
-newSize dim pos = fi $ fi dim - pos * 2
-
-scaleBy dim ratio = floor $ fi dim * (1.0 - ratio) / 2
-
-centeredLayout ::
-  Dimension ->
-  Dimension ->
-  Double ->
-  Double ->
-  l a ->
-  ModifiedLayout CenteredLayout l a
-centeredLayout widthBound heightBound w h = ModifiedLayout (CenteredLayout widthBound heightBound w h)
+centeredLayout widthBound heightBound w h = ModifiedLayout (CenteredLayout widthBound heightBound w h False)
 
 -- Layout Definition
 myLayout =
   avoidStruts $
-    spacingRaw True (Border 0 5 5 5) True (Border 5 5 5 5) True $
-      Full ||| Accordion ||| tcm
+    spacingRaw True (Border 0 5 5 5) True (Border 5 5 5 5) True layout
   where
     tcm = ThreeColMid 1 (3 / 100) (1 / 2)
-
--- centered = Accordion ||| tcm
--- others = centerMaster centered
--- cfgForceFull = forceFull 2560 1600
--- cfgCenteredIfSingle = centeredIfSingle 0.7 1.0
--- others = cfgForceFull $ cfgCenteredIfSingle centered
--- cfgCentered = centeredLayout 2560 1600 0.7 1.0
--- others = cfgCentered centered
-
--- others = cfgForceFull $ cfgCentered centered
-
--- default tiling algorithm partitions the screen into two panes
---  tiled = Tall nmaster delta ratio
--- --
--- -- -- The default number of windows in the master pane
---  nmaster = 1
--- --
--- -- -- Default proportion of screen occupied by master pane
---  ratio = 1 / 2
--- --
--- -- -- Percent of screen to increment by when resizing panes
---  delta = 3 / 100
+    centered = Full ||| Accordion ||| tcm
+    cfgCentered = centeredLayout 2560 1600 0.7 1.0
+    layout = cfgCentered centered
 
 -- Window rules:
 
