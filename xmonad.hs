@@ -101,10 +101,7 @@ myNormalBorderColor = "#dddddd"
 
 myFocusedBorderColor = "#ff00ff"
 
-------------------------------------------------------------------------
--- Key bindings. Add, modify or remove key bindings here.
---
-
+-- Search
 newtype AppPrompt = AppPrompt String
 
 instance XPrompt AppPrompt where
@@ -114,7 +111,7 @@ type Application = String
 
 type Parameters = String
 
-launch' :: MonadIO m => Application -> Parameters -> m ()
+launch' :: (MonadIO m) => Application -> Parameters -> m ()
 launch' app params = spawn (app ++ " " ++ params)
 
 launchApp :: XPConfig -> Application -> X ()
@@ -148,6 +145,7 @@ promptConfig =
       P.showCompletionOnTab = True
     }
 
+-- Key Bindings
 myKeys :: XConfig Layout -> M.Map (KeyMask, KeySym) (X ())
 myKeys conf@XConfig {XMonad.modMask = modm} =
   M.fromList $
@@ -155,7 +153,9 @@ myKeys conf@XConfig {XMonad.modMask = modm} =
     [ ((modm .|. shiftMask, xK_Return), spawn $ XMonad.terminal conf),
       -- launch dmenu
       -- ((modm, xK_p), spawn "dmenu_run -fn 'xft:monospace-14' -nb '#000000' -nf '#ca8f2d'"),
-      ((modm, xK_p), spawn "rofi -show combi -modes combi -combi-modes 'window,drun,run'"),
+      ((modm, xK_p), spawn "rofi -m -1 -show combi -modes combi -combi-modes 'window,drun,run'"),
+      ((modm, xK_apostrophe), spawn "rofi -m -1 -show jira -modes jira:jira.rofi"),
+      ((modm, xK_semicolon), spawn "rofi -m -1 -show chrome -modes chrome:chrome.rofi"),
       -- close focused window
       ((modm .|. shiftMask, xK_c), kill),
       -- lock the screen
@@ -183,7 +183,7 @@ myKeys conf@XConfig {XMonad.modMask = modm} =
       -- Swap the focused window with the previous window
       ((modm .|. shiftMask, xK_k), windows W.swapUp),
       -- Go to a Window by its name
-      ((modm, xK_g), gotoMenuConfig def {menuCommand = "rofi", menuArgs = ["-dmenu", "-i", "-p", "Go to"]}),
+      -- ((modm, xK_semicolon), gotoMenuConfig def {menuCommand = "rofi", menuArgs = ["-dmenu", "-i", "-p", "Go to"]}),
       -- Bring a Window by its name
       ((modm, xK_b), bringMenuConfig def {menuCommand = "rofi", menuArgs = ["-dmenu", "-i", "-p", "Bring"]}),
       -- Shrink the master area
@@ -205,40 +205,31 @@ myKeys conf@XConfig {XMonad.modMask = modm} =
       ((mod1Mask, xK_grave), spawn "dunstctl history-pop"),
       ((mod1Mask, xK_space), spawn "dunstctl close"),
       ((mod1Mask, xK_Return), spawn "dunstctl context"),
+
       -- volume control buttons
       ((noModMask, mute), spawn "toggle-mute"),
       ((noModMask, raiseVolume), spawn "volume-up"),
       ((noModMask, lowerVolume), spawn "volume-down"),
+
       -- search
-      ((modm, xK_d), S.promptSearchBrowser promptConfig "google-chrome" S.duckduckgo),
-      ((modm, xK_y), S.promptSearchBrowser promptConfig "google-chrome" S.youtube),
-      ((modm, xK_o), launchApp promptConfig "google-chrome"),
-      ((modm, xK_slash), SM.submap $ searchEngineMap $ S.promptSearchBrowser promptConfig "google-chrome"),
+      ((modm, xK_d), S.promptSearchBrowser promptConfig "firefox" S.duckduckgo),
+      ((modm, xK_y), S.promptSearchBrowser promptConfig "firefox" S.youtube),
+      ((modm, xK_o), launchApp promptConfig "firefox"),
+      ((modm, xK_slash), SM.submap $ searchEngineMap $ S.promptSearchBrowser promptConfig "firefox"),
+
       -- print the screen
       ((noModMask, printScreen), spawn "flameshot launcher"),
+
       -- Quit xmonad
       ((modm .|. shiftMask, xK_q), io exitSuccess),
+
       -- Restart xmonad
       ((modm, xK_q), spawn "xmonad --recompile; pkill xmobar; xmonad --restart"),
+
       -- Run xmessage with a summary of the default keybindings (useful for beginners)
       ((modm .|. shiftMask, xK_slash), spawn ("echo \"" ++ help ++ "\" | xmessage -file -"))
     ]
       ++
-      --
-      -- mod-[1..9], Switch to workspace N
-      -- mod-shift-[1..9], Move client to workspace N
-      --
-
-      --
-      -- mod-[1..9], Switch to workspace N
-      -- mod-shift-[1..9], Move client to workspace N
-      --
-
-      --
-      -- mod-[1..9], Switch to workspace N
-      -- mod-shift-[1..9], Move client to workspace N
-      --
-
       --
       -- mod-[1..9], Switch to workspace N
       -- mod-shift-[1..9], Move client to workspace N
@@ -257,7 +248,6 @@ myKeys conf@XConfig {XMonad.modMask = modm} =
           (f, m) <- [(W.view, 0), (W.shift, shiftMask)]
       ]
 
-------------------------------------------------------------------------
 -- Mouse bindings: default actions bound to mouse events
 --
 myMouseBindings :: XConfig l -> M.Map (KeyMask, Button) (Window -> X ())
@@ -282,7 +272,6 @@ myMouseBindings XConfig {XMonad.modMask = modm} =
       -- you may also bind events to the mouse scroll wheel (button4 and button5)
     ]
 
-------------------------------------------------------------------------
 -- Layouts:
 
 -- You can specify and transform your layouts by modifying these values.
@@ -344,19 +333,21 @@ centeredLayout ::
   ModifiedLayout CenteredLayout l a
 centeredLayout widthBound heightBound w h = ModifiedLayout (CenteredLayout widthBound heightBound w h)
 
+-- Layout Definition
 myLayout =
   avoidStruts $
     spacingRaw True (Border 0 5 5 5) True (Border 5 5 5 5) True $
-      Full ||| others
+      Full ||| Accordion ||| tcm
   where
     tcm = ThreeColMid 1 (3 / 100) (1 / 2)
-    centered = Accordion ||| tcm
-    -- others = centerMaster centered
-    -- cfgForceFull = forceFull 2560 1600
-    -- cfgCenteredIfSingle = centeredIfSingle 0.7 1.0
-    -- others = cfgForceFull $ cfgCenteredIfSingle centered
-    cfgCentered = centeredLayout 2560 1600 0.7 1.0
-    others = cfgCentered centered
+
+-- centered = Accordion ||| tcm
+-- others = centerMaster centered
+-- cfgForceFull = forceFull 2560 1600
+-- cfgCenteredIfSingle = centeredIfSingle 0.7 1.0
+-- others = cfgForceFull $ cfgCenteredIfSingle centered
+-- cfgCentered = centeredLayout 2560 1600 0.7 1.0
+-- others = cfgCentered centered
 
 -- others = cfgForceFull $ cfgCentered centered
 
@@ -372,7 +363,6 @@ myLayout =
 -- -- -- Percent of screen to increment by when resizing panes
 --  delta = 3 / 100
 
-------------------------------------------------------------------------
 -- Window rules:
 
 -- Execute arbitrary actions and WindowSet manipulations when managing
@@ -406,7 +396,6 @@ myManageHook =
   where
     viewShift = doF . liftM2 (.) W.greedyView W.shift
 
-------------------------------------------------------------------------
 -- Event handling
 
 -- * EwmhDesktops users should change this to ewmhDesktopsEventHook
@@ -419,7 +408,6 @@ myManageHook =
 -- myEventHook :: Event -> X All
 -- myEventHook = ewmhDesktopsEventHook -- mempty
 
-------------------------------------------------------------------------
 -- Status bars and logging
 
 -- Perform an arbitrary action on each internal state change or X event.
@@ -428,7 +416,6 @@ myManageHook =
 myLogHook :: X ()
 myLogHook = return ()
 
-------------------------------------------------------------------------
 -- Startup hook
 
 -- Perform an arbitrary action each time xmonad starts or is restarted
@@ -447,12 +434,10 @@ myStartupHook =
     <+> spawnOnce "blueman-applet"
     <+> spawnOnce "nm-applet"
     <+> spawnOnce "flameshot"
-    <+> spawnOnOnce "1:www" "google-chrome-stable --new-window"
+    <+> spawnOnOnce "7:www" "firefox-stable --new-window"
     <+> spawnOnOnce "2:term" myTerminal
     <+> spawnOnOnce "8:chat" "slack"
-    <+> spawnOnOnce "8:chat" "Discord"
 
-------------------------------------------------------------------------
 -- Now run xmonad with all the defaults we set up.
 
 main :: IO ()
