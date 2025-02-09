@@ -154,8 +154,8 @@ myKeys conf@XConfig {XMonad.modMask = modm} =
       -- launch dmenu
       -- ((modm, xK_p), spawn "dmenu_run -fn 'xft:monospace-14' -nb '#000000' -nf '#ca8f2d'"),
       ((modm, xK_p), spawn "rofi -m -1 -show combi -modes combi -combi-modes 'window,drun,run'"),
-      ((modm, xK_apostrophe), spawn "rofi -m -1 -show jira -modes jira:jira.rofi"),
-      ((modm, xK_semicolon), spawn "rofi -m -1 -show chrome -modes chrome:chrome.rofi"),
+      ((modm, xK_apostrophe), spawn "rofi -m -1 -sort -show jira -modes jira:jira.rofi"),
+      ((modm, xK_semicolon), spawn "rofi -m -1 -sort -show chrome -modes chrome:chrome.rofi"),
       -- close focused window
       ((modm .|. shiftMask, xK_c), kill),
       -- lock the screen
